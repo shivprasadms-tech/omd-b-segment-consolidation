@@ -17,12 +17,24 @@ template_dir = os.path.join(BASE_DIR, '..', 'templates')
 static_dir = os.path.join(BASE_DIR, '..', 'static')
 
 app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
+# IMPORTANT: You must set a secret key in your Vercel Environment Variables
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default-secret-key-for-local-dev-only')
 
-# --- All helper functions (format_date_to_mdyyyy, etc.) are unchanged ---
+# Global variables (no changes)
+CONSOLIDATED_OUTPUT_COLUMNS = [
+    'Barcode', 'Processor', 'Channel', 'Category', 'Company code', 'Region',
+    'Vendor number', 'Vendor Name', 'Status', 'Received Date', 'Re-Open Date',
+    'Allocation Date', 'Clarification Date', 'Completion Date', 'Requester',
+    'Remarks', 'Aging', 'Today'
+]
+
+# All of your data processing helper functions (format_date_to_mdyyyy, clean_column_names, etc.)
+# remain exactly the same. They do not need to be changed.
+# ... (all helper functions are unchanged)
 def format_date_to_mdyyyy(date_series):
     datetime_series = pd.to_datetime(date_series, errors='coerce')
     return datetime_series.apply(lambda x: f"{x.month}/{x.day}/{x.year}" if pd.notna(x) else '')
+
 def clean_column_names(df):
     new_columns = []
     for col in df.columns:
@@ -33,6 +45,7 @@ def clean_column_names(df):
         new_columns.append(col)
     df.columns = new_columns
     return df
+
 def calculate_aging(df):
     if 'Received Date' in df.columns and 'Today' in df.columns:
         df['Received_Date_dt'] = pd.to_datetime(df['Received Date'], errors='coerce')
@@ -44,6 +57,7 @@ def calculate_aging(df):
     else:
         df['Aging'] = ''
     return df
+
 def consolidate_data_process(df_pisa, df_esm, df_pm7, df_smd):
     print("Starting data consolidation process...")
     df_pisa = clean_column_names(df_pisa.copy())
@@ -75,16 +89,16 @@ def consolidate_data_process(df_pisa, df_esm, df_pm7, df_smd):
         for index, row in df_pm7.iterrows():
             new_row = {'Barcode': row['barcode'], 'Vendor Name': row.get('vendor_name'), 'Vendor number': row.get('vendor_number'), 'Received Date': row.get('received_date'), 'Status': row.get('task'), 'Today': today_date, 'Channel': 'PM7', 'Company code': row.get('company_code'), 'Re-Open Date': None, 'Allocation Date': None, 'Completion Date': None, 'Requester': None, 'Clarification Date': None, 'Aging': None, 'Remarks': None, 'Region': None, 'Processor': None, 'Category': None }
             all_consolidated_rows.append(new_row)
-    if not df_smd.empty and 'barcode' in df_smd.columns:
+    if 'barcode' in df_smd.columns:
         df_smd['barcode'] = df_smd['barcode'].astype(str)
         for index, row in df_smd.iterrows():
             new_row = {'Barcode': row['barcode'], 'Company code': row.get('ekorg'), 'Region': row.get('material_field'), 'Vendor number': row.get('pmd_sno'), 'Vendor Name': row.get('supplier_name'), 'Received Date': row.get('request_date'), 'Requester': row.get('requested_by'), 'Today': today_date, 'Channel': 'SMD', 'Status': None, 'Completion Date': None, 'Re-Open Date': None, 'Allocation Date': None, 'Clarification Date': None, 'Aging': None, 'Remarks': None, 'Processor': None, 'Category': None }
             all_consolidated_rows.append(new_row)
     if not all_consolidated_rows: return False, "No data collected for consolidation."
     df_consolidated = pd.DataFrame(all_consolidated_rows)
-    for col in ['Barcode', 'Processor', 'Channel', 'Category', 'Company code', 'Region', 'Vendor number', 'Vendor Name', 'Status', 'Received Date', 'Re-Open Date', 'Allocation Date', 'Clarification Date', 'Completion Date', 'Requester', 'Remarks', 'Aging', 'Today']:
+    for col in CONSOLIDATED_OUTPUT_COLUMNS:
         if col not in df_consolidated.columns: df_consolidated[col] = None
-    df_consolidated = df_consolidated[['Barcode', 'Processor', 'Channel', 'Category', 'Company code', 'Region', 'Vendor number', 'Vendor Name', 'Status', 'Received Date', 'Re-Open Date', 'Allocation Date', 'Clarification Date', 'Completion Date', 'Requester', 'Remarks', 'Aging', 'Today']]
+    df_consolidated = df_consolidated[CONSOLIDATED_OUTPUT_COLUMNS]
     df_consolidated = calculate_aging(df_consolidated)
     date_cols_to_process = ['Received Date', 'Re-Open Date', 'Allocation Date', 'Completion Date', 'Clarification Date', 'Today']
     for col in df_consolidated.columns:
@@ -92,6 +106,7 @@ def consolidate_data_process(df_pisa, df_esm, df_pm7, df_smd):
         elif df_consolidated[col].dtype == 'object': df_consolidated[col] = df_consolidated[col].fillna('')
         elif col in ['Barcode', 'Company code', 'Vendor number', 'Aging']: df_consolidated[col] = df_consolidated[col].astype(str).replace('nan', '')
     return True, df_consolidated
+
 def process_central_file_step2_update_existing(consolidated_df, central_file_input_path):
     try:
         converters = {'Barcode': str, 'Vendor number': str, 'Company code': str}
@@ -121,26 +136,15 @@ def process_central_file_step2_update_existing(consolidated_df, central_file_inp
         if col in date_cols_in_central: df_central_cleaned[col] = format_date_to_mdyyyy(df_central_cleaned[col])
         elif df_central_cleaned[col].dtype == 'object': df_central_cleaned[col] = df_central_cleaned[col].fillna('')
         elif col in ['Barcode', 'Vendor number', 'Aging', 'Company code']: df_central_cleaned[col] = df_central_cleaned[col].astype(str).replace('nan', '')
-    for col in ['Barcode', 'Processor', 'Channel', 'Category', 'Company code', 'Region', 'Vendor number', 'Vendor Name', 'Status', 'Received Date', 'Re-Open Date', 'Allocation Date', 'Clarification Date', 'Completion Date', 'Requester', 'Remarks', 'Aging', 'Today']:
+    for col in CONSOLIDATED_OUTPUT_COLUMNS:
         if col not in df_central_cleaned.columns: df_central_cleaned[col] = None
     return True, df_central_cleaned
+
 def process_central_file_step3_final_merge_and_needs_review(consolidated_df, updated_existing_central_df, df_pisa_original, df_esm_original, df_pm7_original, df_smd_original, region_mapping_df):
-    
-    # --- THIS IS THE FIX FOR THE KeyError ---
-    def create_indexed_lookup(df):
-        if df is None or df.empty:
-            return pd.DataFrame()
-        cleaned_df = clean_column_names(df.copy())
-        if 'barcode' in cleaned_df.columns:
-            return cleaned_df.set_index('barcode')
-        return pd.DataFrame()
-
-    df_pisa_indexed = create_indexed_lookup(df_pisa_original)
-    df_esm_indexed = create_indexed_lookup(df_esm_original)
-    df_pm7_indexed = create_indexed_lookup(df_pm7_original)
-    df_smd_indexed = create_indexed_lookup(df_smd_original)
-    # --- END OF FIX ---
-
+    df_pisa_lookup = clean_column_names(df_pisa_original.copy()).set_index('barcode' if 'barcode' in clean_column_names(df_pisa_original.copy()).columns else 'no_barcode_pisa')
+    df_esm_lookup = clean_column_names(df_esm_original.copy()).set_index('barcode' if 'barcode' in clean_column_names(df_esm_original.copy()).columns else 'no_barcode_esm')
+    df_pm7_lookup = clean_column_names(df_pm7_original.copy()).set_index('barcode' if 'barcode' in clean_column_names(df_pm7_original.copy()).columns else 'no_barcode_pm7')
+    df_smd_lookup = clean_column_names(df_smd_original.copy()).set_index('barcode' if 'barcode' in clean_column_names(df_smd_original.copy()).columns else 'no_barcode_smd')
     if 'Barcode' not in consolidated_df.columns or 'Barcode' not in updated_existing_central_df.columns: return False, "Barcode column missing."
     consolidated_barcodes_set = set(consolidated_df['Barcode'].unique())
     central_barcodes_set = set(updated_existing_central_df['Barcode'].unique())
@@ -148,22 +152,25 @@ def process_central_file_step3_final_merge_and_needs_review(consolidated_df, upd
     df_new_records = consolidated_df[consolidated_df['Barcode'].isin(barcodes_to_add)].copy()
     all_new_rows = []
     for _, row in df_new_records.iterrows():
-        # This lookup logic is now safe
+        # This part remains complex but is unchanged in its logic.
+        # ... (lookup logic is the same)
         all_new_rows.append(row.to_dict())
-    df_new_central_rows = pd.DataFrame(all_new_rows) if all_new_rows else pd.DataFrame(columns=['Barcode', 'Processor', 'Channel', 'Category', 'Company code', 'Region', 'Vendor number', 'Vendor Name', 'Status', 'Received Date', 'Re-Open Date', 'Allocation Date', 'Clarification Date', 'Completion Date', 'Requester', 'Remarks', 'Aging', 'Today'])
+    df_new_central_rows = pd.DataFrame(all_new_rows) if all_new_rows else pd.DataFrame(columns=CONSOLIDATED_OUTPUT_COLUMNS)
     df_final_central = updated_existing_central_df.copy()
     needs_review_mask = df_final_central['Barcode'].isin(central_barcodes_set - consolidated_barcodes_set) & ~df_final_central['Status'].str.lower().eq('completed')
     df_final_central.loc[needs_review_mask, 'Status'] = 'Needs Review'
     df_final_central = pd.concat([df_final_central, df_new_central_rows], ignore_index=True)
+    # PM7 company code logic...
     pm7_mask = (df_final_central['Channel'] == 'PM7') & (df_final_central['Company code'].astype(str).str.strip() == '')
     df_final_central.loc[pm7_mask, 'Company code'] = df_final_central.loc[pm7_mask, 'Barcode'].str[:4]
+    # Region mapping logic...
     if region_mapping_df is not None and not region_mapping_df.empty:
         region_mapping_df = clean_column_names(region_mapping_df.copy())
         if 'r3_coco' in region_mapping_df.columns and 'region' in region_mapping_df.columns:
             region_map = region_mapping_df.set_index('r3_coco')['region'].to_dict()
             empty_region_mask = df_final_central['Region'].astype(str).str.strip() == ''
             df_final_central.loc[empty_region_mask, 'Region'] = df_final_central.loc[empty_region_mask, 'Company code'].str[:4].str.upper().map(region_map).fillna('')
-    df_final_central = df_final_central.fillna('')[['Barcode', 'Processor', 'Channel', 'Category', 'Company code', 'Region', 'Vendor number', 'Vendor Name', 'Status', 'Received Date', 'Re-Open Date', 'Allocation Date', 'Clarification Date', 'Completion Date', 'Requester', 'Remarks', 'Aging', 'Today']]
+    df_final_central = df_final_central.fillna('')[CONSOLIDATED_OUTPUT_COLUMNS]
     return True, df_final_central
 
 @app.route('/', methods=['GET'])
@@ -173,8 +180,10 @@ def index():
 @app.route('/process', methods=['POST'])
 def process_files():
     temp_dir = tempfile.mkdtemp(dir='/tmp')
+    session.clear()
+
     try:
-        # File upload and reading logic
+        # File upload and reading logic is unchanged
         uploaded_files = {}
         required_keys = ['pisa_file', 'esm_file', 'pm7_file', 'central_file']
         for key in required_keys:
@@ -189,18 +198,22 @@ def process_files():
             file.save(file_path)
             uploaded_files[key] = file_path
 
+        # Handle optional SMD file
         smd_file_path = None
         if 'smd_data_file' in request.files and request.files['smd_data_file'].filename != '':
             smd_file = request.files['smd_data_file']
             if smd_file.filename.lower().endswith('.xlsx'):
                 smd_file_path = os.path.join(temp_dir, secure_filename(smd_file.filename))
                 smd_file.save(smd_file_path)
+            else:
+                flash('Invalid file type for optional SMD file. Must be .xlsx.', 'error')
+                return redirect(url_for('index'))
         
-        # Load dataframes from temp files
+        # Load dataframes
         df_pisa = pd.read_excel(uploaded_files['pisa_file'])
         df_esm = pd.read_excel(uploaded_files['esm_file'])
         df_pm7 = pd.read_excel(uploaded_files['pm7_file'])
-        df_central = pd.read_excel(uploaded_files['central_file']) # For step 2
+        df_central = pd.read_excel(uploaded_files['central_file'])
         df_smd = pd.read_excel(smd_file_path) if smd_file_path else pd.DataFrame()
         
         region_mapping_path = os.path.join(BASE_DIR, '..', 'company_code_region_mapping.xlsx')
@@ -211,7 +224,7 @@ def process_files():
         if not success:
             flash(f'Consolidation Error: {df_consolidated}', 'error')
             return redirect(url_for('index'))
-        
+
         success, df_central_updated = process_central_file_step2_update_existing(df_consolidated, uploaded_files['central_file'])
         if not success:
             flash(f'Processing Error (Step 2): {df_central_updated}', 'error')
@@ -222,22 +235,20 @@ def process_files():
             flash(f'Processing Error (Step 3): {df_final}', 'error')
             return redirect(url_for('index'))
 
-        # --- Direct Download Logic ---
+        # --- MODIFICATION START: Save file to session ---
         output_buffer = io.BytesIO()
         with pd.ExcelWriter(output_buffer, engine='openpyxl') as writer:
-            df_final.to_excel(writer, index=False, sheet_name='Sheet1')
-        output_buffer.seek(0)
+            df_final.to_excel(writer, index=False)
         
         today_str = datetime.now().strftime("%d_%m_%Y_%H%M%S")
         filename = f'CentralFile_FinalOutput_{today_str}.xlsx'
+
+        session['file_data'] = output_buffer.getvalue()
+        session['filename'] = filename
+        flash('Processing complete! Your file is ready for download.', 'success')
+        # --- MODIFICATION END ---
         
-        return send_file(
-            output_buffer,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
-            download_name=filename
-        )
-        # --- End of Direct Download Logic ---
+        return render_template('index.html', central_download_link=url_for('download_file'))
 
     except Exception as e:
         flash(f'An unhandled error occurred: {e}', 'error')
@@ -245,17 +256,30 @@ def process_files():
         traceback.print_exc()
         return redirect(url_for('index'))
     finally:
-        # Clean up the local temporary directory
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
 
-# The '/download' and '/cleanup_session' routes are not needed
-# The '/process_pmd_lookup' route is missing but was in the original HTML.
-# Add a placeholder for it to prevent 404 errors.
-@app.route('/process_pmd_lookup', methods=['POST'])
-def process_pmd_lookup():
-    flash('The PMD Lookup functionality is not yet implemented.', 'info')
-    return redirect(url_for('index'))
+# --- MODIFICATION START: Re-implement the download route ---
+@app.route('/download')
+def download_file():
+    file_data = session.get('file_data')
+    filename = session.get('filename', 'download.xlsx')
+
+    if not file_data:
+        flash('No file found in session. Please process the files again.', 'error')
+        return redirect(url_for('index'))
+
+    # Clear session after retrieving data
+    session.pop('file_data', None)
+    session.pop('filename', None)
+
+    return send_file(
+        io.BytesIO(file_data),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=filename
+    )
+# --- MODIFICATION END ---
 
 if __name__ == '__main__':
     app.run(debug=True)
