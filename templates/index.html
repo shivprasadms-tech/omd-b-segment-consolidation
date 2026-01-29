@@ -117,7 +117,7 @@
             margin-top: 20px;
             text-align: center;
         }
-        .download-links h2 {
+        .download-links h3 { /* Changed from h2 to h3 for semantic hierarchy */
             color: #2c3e50; /* Dark blue */
             margin-bottom: 10px;
         }
@@ -254,7 +254,7 @@
         {% endwith %}
 
         <h2>Consolidated Data Processing</h2>
-        <form action="/process" method="post" enctype="multipart/form-data">
+        <form action="{{ url_for('process_files') }}" method="post" enctype="multipart/form-data">
             <div class="form-group">
                 <label for="pisa_file">Upload PISA Excel File (.xlsx):</label>
                 <input type="file" name="pisa_file" id="pisa_file" accept=".xlsx" required>
@@ -288,15 +288,18 @@
        
         {% if central_download_link %}
             <div class="download-links">
-                <h2>Consolidated Processing Complete!</h2>
+                <h3>Consolidated Processing Complete!</h3>
                 <p>Your processed central file is ready:</p>
-                <a href="{{ central_download_link }}">Download Updated Central File</a>
+                {# Pass the basename of the file to download route #}
+                <a href="{{ url_for('download_central_file', filename=central_download_link | basename) }}">
+                    Download Updated Central File ({{ central_download_link | basename }})
+                </a>
             </div>
         {% endif %}
 
         {# NEW SECTION FOR PMD LOOKUP #}
         <h2>PMD Lookup Tool</h2>
-        <form action="/process_pmd_lookup" method="post" enctype="multipart/form-data">
+        <form action="{{ url_for('process_pmd_lookup') }}" method="post" enctype="multipart/form-data">
             <div class="form-group">
                 <label for="pmd_dump_file">Upload PMD Dump File (.xlsx):</label>
                 <input type="file" name="pmd_dump_file" id="pmd_dump_file" accept=".xlsx" required>
@@ -310,11 +313,21 @@
 
         {% if pmd_download_link %}
             <div class="download-links">
-                <h2>PMD Lookup Complete!</h2>
+                <h3>PMD Lookup Complete!</h3>
                 <p>Your PMD lookup result file is ready:</p>
-                <a href="{{ pmd_download_link }}">Download PMD Lookup Result File</a>
+                {# Pass the basename of the file to download route #}
+                <a href="{{ url_for('download_pmd_file', filename=pmd_download_link | basename) }}">
+                    Download PMD Lookup Result File ({{ pmd_download_link | basename }})
+                </a>
             </div>
         {% endif %}
+        
+        <div class="download-links">
+             <form action="{{ url_for('cleanup_session') }}" method="get">
+                <button type="submit">Clean Up Temporary Files & Session</button>
+            </form>
+        </div>
+
 
     </div>
 
