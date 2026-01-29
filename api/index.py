@@ -1076,9 +1076,9 @@ def process_files():
     session.pop('central_output_path', None)
     session.pop('region_map', None)
     
-    REGION_MAPPING_FILE_PATH = os.path.join(BASE_DIR, 'company_code_region_mapping.xlsx')
+    #REGION_MAPPING_FILE_PATH = os.path.join(BASE_DIR,'company_code_region_mapping.xlsx')
     # If using project_root/company_code_region_mapping.xlsx
-    # REGION_MAPPING_FILE_PATH = os.path.join(BASE_DIR, '..', 'company_code_region_mapping.xlsx')
+    REGION_MAPPING_FILE_PATH = os.path.join(BASE_DIR, '..', 'company_code_region_mapping.xlsx')
 
 
     try:
